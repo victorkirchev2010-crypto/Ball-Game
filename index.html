@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ball Bounce</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0f1028;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const BALL_RADIUS = 12;
+  const PADDLE_WIDTH = 120;
+  const PADDLE_HEIGHT = 16;
+  const PADDLE_SPEED = 9;
+  const PADDLE_MARGIN = 40;
+  const START_SPEED = 5;
+  const SPEED_STEP = 0.75;   // added every 5 points
+  const TOP_BAR = 70;        // space reserved for the score
+
+  const keys = { left: false, right: false };
+  let ball, paddle, score, best = 0, speed, gameOver, flash;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    if (paddle) {
+      paddle.y = canvas.height - PADDLE_MARGIN - PADDLE_HEIGHT;
+      paddle.x = Math.min(paddle.x, canvas.width - paddle.w);
+    }
+  }
+
+  function reset() {
+    score = 0;
+    speed = START_SPEED;
+    gameOver = false;
+    flash = 0;
+    paddle = {
+      w: PADDLE_WIDTH,
+      h: PADDLE_HEIGHT,
+      x: (canvas.width - PADDLE_WIDTH) / 2,
+      y: canvas.height - PADDLE_MARGIN - PADDLE_HEIGHT
+    };
+    // Launch upward at a random angle
+    const angle = (-Math.PI / 2) + (Math.random() - 0.5) * (Math.PI / 2);
+    ball = {
+      x: canvas.width / 2,
+      y: canvas.height / 2,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed
+    };
+  }
+
+  function update() {
+    if (gameOver) return;
+
+    // Paddle movement
+    if (keys.left) paddle.x -= PADDLE_SPEED;
+    if (keys.right) paddle.x += PADDLE_SPEED;
+    paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, paddle.x));
+
+    // Ball movement
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    // Walls
+    if (ball.x - BALL_RADIUS < 0) {
+      ball.x = BALL_RADIUS;
+      ball.vx = Math.abs(ball.vx);
+    } else if (ball.x + BALL_RADIUS > canvas.width) {
+      ball.x = canvas.width - BALL_RADIUS;
+      ball.vx = -Math.abs(ball.vx);
+    }
+    if (ball.y - BALL_RADIUS < TOP_BAR) {
+      ball.y = TOP_BAR + BALL_RADIUS;
+      ball.vy = Math.abs(ball.vy);
+    }
+
+    // Paddle collision (only while moving down)
+    if (
+      ball.vy > 0 &&
+      ball.y + BALL_RADIUS >= paddle.y &&
+      ball.y - BALL_RADIUS <= paddle.y + paddle.h &&
+      ball.x + BALL_RADIUS >= paddle.x &&
+      ball.x - BALL_RADIUS <= paddle.x + paddle.w
+    ) {
+      score++;
+      flash = 1;
+      if (score % 5 === 0) speed += SPEED_STEP;
+
+      // Bounce angle depends on where the ball hits the paddle
+      const hit = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+      const clamped = Math.max(-1, Math.min(1, hit));
+      const angle = clamped * (Math.PI / 3); // up to 60° from vertical
+      ball.vx = Math.sin(angle) * speed;
+      ball.vy = -Math.cos(angle) * speed;
+      ball.y = paddle.y - BALL_RADIUS;
+    }
+
+    // Fell past the paddle
+    if (ball.y - BALL_RADIUS > canvas.height) {
+      gameOver = true;
+      best = Math.max(best, score);
+    }
+
+    if (flash > 0) flash = Math.max(0, flash - 0.05);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function draw() {
+    // Background gradient
+    const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bg.addColorStop(0, "#1a1446");
+    bg.addColorStop(1, "#0b2a4a");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Score bar
+    ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.fillRect(0, 0, canvas.width, TOP_BAR);
+    ctx.fillStyle = "#ffd23f";
+    ctx.fillRect(0, TOP_BAR - 3, canvas.width, 3);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 34px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillStyle = flash > 0 ? `rgb(255, ${210 + 45 * flash}, ${63 + 192 * flash})` : "#ffffff";
+    ctx.fillText(`Score: ${score}`, canvas.width / 2, TOP_BAR / 2);
+
+    ctx.font = "600 16px 'Segoe UI', system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#3ee8ff";
+    ctx.fillText(`Level ${Math.floor(score / 5) + 1}`, 20, TOP_BAR / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#ff5fa2";
+    ctx.fillText(`Best: ${best}`, canvas.width - 20, TOP_BAR / 2);
+
+    // Paddle
+    const pg = ctx.createLinearGradient(paddle.x, 0, paddle.x + paddle.w, 0);
+    pg.addColorStop(0, "#3ee8ff");
+    pg.addColorStop(1, "#7c5cff");
+    ctx.shadowColor = "#3ee8ff";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = pg;
+    roundRect(paddle.x, paddle.y, paddle.w, paddle.h, paddle.h / 2);
+    ctx.fill();
+
+    // Ball
+    ctx.shadowColor = "#ff5fa2";
+    ctx.shadowBlur = 24;
+    const bgBall = ctx.createRadialGradient(
+      ball.x - 4, ball.y - 4, 2, ball.x, ball.y, BALL_RADIUS
+    );
+    bgBall.addColorStop(0, "#fff3a0");
+    bgBall.addColorStop(0.5, "#ffb03b");
+    bgBall.addColorStop(1, "#ff5fa2");
+    ctx.fillStyle = bgBall;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Game over overlay
+    if (gameOver) {
+      ctx.fillStyle = "rgba(10, 8, 30, 0.75)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ff5fa2";
+      ctx.font = "bold 64px 'Segoe UI', system-ui, sans-serif";
+      ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 40);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "600 26px 'Segoe UI', system-ui, sans-serif";
+      ctx.fillText(`Final score: ${score}`, canvas.width / 2, canvas.height / 2 + 15);
+
+      ctx.fillStyle = "#3ee8ff";
+      ctx.font = "500 20px 'Segoe UI', system-ui, sans-serif";
+      ctx.fillText("Press Space to restart", canvas.width / 2, canvas.height / 2 + 60);
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { keys.left = true; e.preventDefault(); }
+    if (e.key === "ArrowRight") { keys.right = true; e.preventDefault(); }
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (gameOver) reset();
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "ArrowLeft") keys.left = false;
+    if (e.key === "ArrowRight") keys.right = false;
+  });
+
+  window.addEventListener("resize", resize);
+
+  resize();
+  reset();
+  loop();
+</script>
+</body>
+</html>
